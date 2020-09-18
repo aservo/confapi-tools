@@ -5,3 +5,5 @@ ConfAPI Tools
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](http://makeapullrequest.com)
 
 Collection of tools that can be used with the ASERVO ConfAPI plugins.
+
+* [Confluence Bulk Export / Import Scripts](confluence/backup)
