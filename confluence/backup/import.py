@@ -10,19 +10,33 @@ import argparse
 import getpass
 
 authentication_tuple = ("admin", "admin")
+error_collection = []
+terminate_script = [450, 403, 401]
 
+
+def collect_error(error_code, value):
+    global error_collection
+    global terminate_script
+    message = str(error_code) + ": " + value
+    error_collection.append(message)
+    if error_code == 401:
+        print("HINT: deactivate CAPTCHA to login after failed attempts; go to General Configuration -> Security "
+              "Settings")
+    if error_code in terminate_script:
+        print(error_collection)
+        return 1
+    return 0
 
 def print_url_unreachable(error):
     print("\nURL can't be reached.\n")
     print(error)
-    exit()
+    return collect_error(450, "url not reachable")
 
 
-def print_http_error(http_response, let_through = 5000):
+def print_http_error(http_response):
     print("An error occurred: " + str(http_response.status_code) + "\n" +
           requests.status_codes._codes[http_response.status_code][0])
-    if http_response.status_code != let_through:
-        exit()
+    return collect_error(http_response.status_code, requests.status_codes._codes[http_response.status_code][0])
 
 
 def parse_json_header(headers):
@@ -60,18 +74,21 @@ def ping_server(baseurl, url):
         resp_get = requests.get(baseurl, auth=authentication_tuple)
         resp_put = requests.put(url, auth=authentication_tuple)
     except requests.exceptions.ConnectionError as e:
-        print_url_unreachable(e)
+        return print_url_unreachable(e)
 
     if not resp_get.ok:
-        print_http_error(resp_get)
+        return print_http_error(resp_get)
 
     if not resp_put.ok:
         if resp_put.status_code == 403:
-            print_http_error(resp_put)
+            return print_http_error(resp_put)
 
 
-def main():
+def main(args):
     global authentication_tuple
+    global error_collection
+    error_collection = []
+    exit_response = 0
 
     parser = argparse.ArgumentParser(
         description="sample usage: \n python3 import.py base-url unix-wildcard1 unix-wildcard2 --username my_username --password my_password"
@@ -85,7 +102,7 @@ def main():
     parser.add_argument("--password", "-P",
                         help="provide password e.g. admin; \nif not provided the user will be prompted to introduce username and password.",
                         required=False)
-    args = parser.parse_args()
+    args = parser.parse_args(args[1:])
 
     username = args.username
     password = args.password
@@ -97,8 +114,13 @@ def main():
     file_wildcards = args.vars
     file_names = []
 
-    for file in os.listdir('.'):
-        for wildcard in file_wildcards:
+    for wildcard in file_wildcards:
+        directory = '.'
+        if "/" in wildcard:
+            pos = wildcard.rfind('/')
+            directory = wildcard[0:pos]
+            wildcard = wildcard[pos+1:]
+        for file in os.listdir(directory):
             if fnmatch.fnmatch(file, wildcard):
                 file_names.append(file)
     print(file_names)
@@ -112,29 +134,40 @@ def main():
         url = args.host + suffix + "rest/confapi/1/backup/import"
 
         # Ping server to verify credentials and permissions
-        ping_server(args.host, url)
+        exit_response = ping_server(args.host, url)
+        if exit_response:
+            return error_collection
 
         # Try to connect
         response = requests.Response()
         try:
             response = requests.put(url, files=multipart_form_dict, auth=authentication_tuple)
-        except requests.exceptions.ConnectionError as e:
-            print_url_unreachable(e)
 
-        # Handle connection responses
-        if not response.ok:
-            js = parse_json_body(response.content)
-            if "errorMessages" in js:
-                print(js["errorMessages"])
-            print_http_error(response,400)
-        else:
-            if response.status_code == 201:
-                print("100%")
-            if response.status_code == 202:
-                js = parse_json_header(response.headers)
-                queue_url = js['Location']
-                handle_asynchronous(queue_url)
+            # Handle connection responses
+            if not response.ok:
+                js = parse_json_body(response.content)
+                if "errorMessages" in js:
+                    print(js["errorMessages"])
+                exit_response = print_http_error(response)
+            else:
+                if response.status_code == 201:
+                    print("100%")
+                    collect_error(0,"Success")
+                if response.status_code == 202:
+                    js = parse_json_header(response.headers)
+                    queue_url = js['Location']
+                    handle_asynchronous(queue_url)
+                    collect_error(0, "Success")
+        except requests.exceptions.ConnectionError as e:
+            exit_response = print_url_unreachable(e)
+
+        if exit_response:
+            return error_collection
+
+    if any(error != '0: Success' for error in error_collection):
+        print(error_collection)
+    return error_collection
 
 
 if __name__ == "__main__":
-    main()
+    main(args=sys.argv)
