@@ -11,7 +11,8 @@ import getpass
 
 authentication_tuple = ("admin", "admin")
 error_collection = []
-terminate_script = [450, 403, 401]
+terminate_script = [444, 403, 401]
+batch_mode = False
 
 
 def collect_error(error_code, value):
@@ -20,17 +21,17 @@ def collect_error(error_code, value):
     message = str(error_code) + ": " + value
     error_collection.append(message)
     if error_code == 401:
-        print("HINT: deactivate CAPTCHA to login after failed attempts; go to General Configuration -> Security "
-              "Settings")
+        print("HINT: After multiple failed login attempts it might be required to solve a CAPTCHA")
     if error_code in terminate_script:
         print(error_collection)
         return 1
     return 0
 
+
 def print_url_unreachable(error):
     print("\nURL can't be reached.\n")
     print(error)
-    return collect_error(450, "url not reachable")
+    return collect_error(444, "url not reachable")
 
 
 def print_http_error(http_response):
@@ -55,17 +56,20 @@ def parse_json_body(body):
 
 
 def handle_asynchronous(queue_url):
+    global batch_mode
     response_get_queue = requests.get(queue_url, auth=authentication_tuple)
     while response_get_queue.status_code == 200:
         js = parse_json_body(response_get_queue.content)
         percentage = js["percentageComplete"]
         response_get_queue = requests.get(queue_url, auth=authentication_tuple)
         time.sleep(1)
-        sys.stdout.write("\r%d%%" % percentage)
+        if not batch_mode:
+            sys.stdout.write("\r%d%%" % percentage)
+            sys.stdout.flush()
+    if not batch_mode:
+        sys.stdout.write("\r%d%%" % 100)
         sys.stdout.flush()
-    sys.stdout.write("\r%d%%" % 100)
-    sys.stdout.flush()
-    print()
+        print()
 
 
 def ping_server(baseurl, url):
@@ -87,20 +91,29 @@ def ping_server(baseurl, url):
 def main(args):
     global authentication_tuple
     global error_collection
+    global batch_mode
     error_collection = []
-    exit_response = 0
 
     parser = argparse.ArgumentParser(
-        description="sample usage: \n python3 import.py base-url unix-wildcard1 unix-wildcard2 --username my_username --password my_password"
-                    "\n python3 import.py http://localhost:1990/confluence Confluence.zip *.zip --username admin --password admin\n or just: \n ./import http://localhost:1990/confluence Confluence.zip *.xml.zip --username admin --password admin",
+        description="sample usage: \n python3 import.py base-url unix-wildcard1 unix-wildcard2 --username my_username "
+                    "--password my_password "
+                    "\n python3 import.py http://localhost:1990/confluence Confluence.zip *.zip --username admin "
+                    "--password admin\n or just: \n ./import.py http://localhost:1990/confluence Confluence.zip "
+                    "*.xml.zip --username admin --password admin",
         formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("host", help="provide host url e.g. http://localhost:1990/confluence")
     parser.add_argument('vars', nargs='*', help="provide list of unix wildcards e.g. *.zip *.xml")
     parser.add_argument("--username", "-U",
-                        help="provide username e.g. admin; \nif not provided the user will be prompted to introduce username and password.",
+                        help="provide username e.g. admin; \nif not provided the user will be prompted to introduce "
+                             "username and password.",
                         required=False)
     parser.add_argument("--password", "-P",
-                        help="provide password e.g. admin; \nif not provided the user will be prompted to introduce username and password.",
+                        help="provide password e.g. admin; \nif not provided the user will be prompted to introduce "
+                             "username and password.",
+                        required=False)
+    parser.add_argument("--batch", "-b",
+                        action="store_true",
+                        help="Enter batch mode.",
                         required=False)
     args = parser.parse_args(args[1:])
 
@@ -113,34 +126,35 @@ def main(args):
 
     file_wildcards = args.vars
     file_names = []
-
     for wildcard in file_wildcards:
         directory = '.'
         if "/" in wildcard:
             pos = wildcard.rfind('/')
             directory = wildcard[0:pos]
-            wildcard = wildcard[pos+1:]
+            wildcard = wildcard[pos + 1:]
         for file in os.listdir(directory):
             if fnmatch.fnmatch(file, wildcard):
                 file_names.append(file)
     print(file_names)
 
+    # Create import url
+    suffix = "/" if args.host[-1] != "/" else ""
+    url = args.host + suffix + "rest/confapi/1/backup/import"
+    batch_mode = False
+    if args.batch:
+        batch_mode = True
+
+    # Ping server to verify credentials and permissions
+    exit_response = ping_server(args.host, url)
+    if exit_response:
+        return error_collection
+
     for file in file_names:
         print("\nUploading " + file)
-
-        # Create link
         multipart_form_dict = {'file': open(file, 'rb')}
-        suffix = "/" if args.host[-1] != "/" else ""
-        url = args.host + suffix + "rest/confapi/1/backup/import"
 
-        # Ping server to verify credentials and permissions
-        exit_response = ping_server(args.host, url)
-        if exit_response:
-            return error_collection
-
-        # Try to connect
-        response = requests.Response()
         try:
+            # Try to connect
             response = requests.put(url, files=multipart_form_dict, auth=authentication_tuple)
 
             # Handle connection responses
@@ -152,12 +166,11 @@ def main(args):
             else:
                 if response.status_code == 201:
                     print("100%")
-                    collect_error(0,"Success")
                 if response.status_code == 202:
                     js = parse_json_header(response.headers)
                     queue_url = js['Location']
                     handle_asynchronous(queue_url)
-                    collect_error(0, "Success")
+                collect_error(0, "Success")
         except requests.exceptions.ConnectionError as e:
             exit_response = print_url_unreachable(e)
 
