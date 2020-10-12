@@ -54,8 +54,41 @@ def parse_json_body(body):
     return result
 
 
-def handle_asynchronous(queue_url):
-    global batch_mode
+def import_start(host, file):
+    exit_response = 0
+    print("\nStart importing space from " + file)
+
+    url_infix = "/" if host[-1] != "/" else ""
+    url = "{}{}{}".format(host, url_infix, IMPORT_RESOURCE)
+
+    # Ping server to verify credentials and permissions
+    ping_server(host, url)
+
+    try:
+        # Try to connect
+        response = requests.put(url, files={'file': open(file, 'rb')}, auth=authentication_tuple, verify=False)
+
+        # Handle connection responses
+        if not response.ok:
+            js = parse_json_body(response.content)
+            if "errorMessages" in js:
+                print(js["errorMessages"])
+            exit_response = print_http_error(response)
+        else:
+            if response.status_code == 201:
+                print("100%")
+            if response.status_code == 202:
+                queue_url = response.headers['Location']
+                import_queue(queue_url)
+            collect_error(0, "Success")
+
+    except requests.exceptions.ConnectionError as e:
+        exit_response = print_url_unreachable(e)
+
+    return exit_response
+
+
+def import_queue(queue_url):
     response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
 
     while response_get_queue.status_code == 200:
@@ -154,29 +187,7 @@ def main(argv):
         batch_mode = True
 
     for file in file_names:
-        print("\nUploading " + file)
-        multipart_form_dict = {'file': open(file, 'rb')}
-
-        try:
-            # Try to connect
-            response = requests.put(url, files=multipart_form_dict, auth=authentication_tuple, verify=False)
-
-            # Handle connection responses
-            if not response.ok:
-                js = parse_json_body(response.content)
-                if "errorMessages" in js:
-                    print(js["errorMessages"])
-                exit_response = print_http_error(response)
-            else:
-                if response.status_code == 201:
-                    print("100%")
-                if response.status_code == 202:
-                    queue_url = response.headers['Location']
-                    handle_asynchronous(queue_url)
-                collect_error(0, "Success")
-
-        except requests.exceptions.ConnectionError as e:
-            exit_response = print_url_unreachable(e)
+        import_start(args.host, file)
 
         if exit_response:
             return error_collection
