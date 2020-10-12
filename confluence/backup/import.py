@@ -33,6 +33,32 @@ def collect_error(error_code, value):
     return 0
 
 
+def parse_args(args):
+    parser = argparse.ArgumentParser(
+        description="sample usage: \n"
+                    "python3 import.py base-url unix-wildcard1 unix-wildcard2 --username user --password pass\n"
+                    "python3 import.py http://localhost:1990/confluence export.zip --username admin --password admin\n"
+                    "or just: \n"
+                    "./import.py http://localhost:1990/confluence *.xml.zip --username admin --password admin",
+        formatter_class=argparse.RawTextHelpFormatter)
+
+    # positional arguments
+    parser.add_argument("host", help="provide host url e.g. http://localhost:1990/confluence")
+    parser.add_argument('vars', nargs='*', help="provide list of unix wildcards e.g. *.zip *.xml")
+
+    # optional arguments
+    parser.add_argument("--username", "-U",
+                        help="provide username e.g. admin;\n"
+                             "if not provided the user will be prompted to enter a username and a password.")
+    parser.add_argument("--password", "-P",
+                        help="provide password e.g. admin;\n"
+                             "if not provided the user will be prompted to enter a password.")
+    parser.add_argument("--batch", "-b", action="store_true",
+                        help="run in batch mode.")
+
+    return parser.parse_args(args[1:])
+
+
 def print_url_unreachable(error):
     print("\nURL can't be reached.\n")
     print(error)
@@ -127,29 +153,7 @@ def main(argv):
     global batch_mode
     error_collection = []
 
-    parser = argparse.ArgumentParser(
-        description="sample usage: \n"
-                    "python3 import.py base-url unix-wildcard1 unix-wildcard2 --username user --password pass\n"
-                    "python3 import.py http://localhost:1990/confluence export.zip --username admin --password admin\n"
-                    "or just: \n"
-                    "./import http://localhost:1990/confluence *.xml.zip --username admin --password admin",
-        formatter_class=argparse.RawTextHelpFormatter)
-
-    # positional arguments
-    parser.add_argument("host", help="provide host url e.g. http://localhost:1990/confluence")
-    parser.add_argument('vars', nargs='*', help="provide list of unix wildcards e.g. *.zip *.xml")
-
-    # optional arguments
-    parser.add_argument("--username", "-U",
-                        help="provide username e.g. admin;\n"
-                             "if not provided the user will be prompted to enter a username and a password.")
-    parser.add_argument("--password", "-P",
-                        help="provide password e.g. admin;\n"
-                             "if not provided the user will be prompted to enter a password.")
-    parser.add_argument("--batch", "-b", action="store_true",
-                        help="run in batch mode.")
-
-    args = parser.parse_args(argv[1:])
+    args = parse_args(argv)
 
     username = args.username
     password = args.password
