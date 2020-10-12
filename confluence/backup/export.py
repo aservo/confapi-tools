@@ -45,11 +45,6 @@ def print_http_error(http_response):
     return collect_error(http_response.status_code, requests.status_codes._codes[http_response.status_code][0])
 
 
-def parse_json_header(headers):
-    res = str(headers).replace("'", '"')
-    return json.loads(res)
-
-
 def parse_json_body(body):
     try:
         body = body.decode("utf-8")
@@ -88,9 +83,7 @@ def export_queue(key, queue_url):
                 sys.stdout.flush()
                 print()
             response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
-
-            js = parse_json_header(response_get_queue.headers)
-            zip_url = js['Location']
+            zip_url = response_get_queue.headers['Location']
             return export_download(key, zip_url)
         return 1
 
@@ -165,8 +158,7 @@ def main(argv):
                     print(js["errorMessages"])
 
             else:
-                js = parse_json_header(response_request_page.headers)
-                location = js['Location']
+                location = response_request_page.headers['Location']
 
                 if response_request_page.status_code == 201:
                     if not batch_mode:

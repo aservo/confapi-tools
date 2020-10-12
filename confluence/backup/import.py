@@ -45,12 +45,6 @@ def print_http_error(http_response):
     return collect_error(http_response.status_code, requests.status_codes._codes[http_response.status_code][0])
 
 
-def parse_json_header(headers):
-    res = str(headers).replace('"', '\\"')
-    res = str(res).replace("'", '"')
-    return json.loads(res)
-
-
 def parse_json_body(body):
     try:
         body = body.decode("utf-8")
@@ -177,8 +171,7 @@ def main(argv):
                 if response.status_code == 201:
                     print("100%")
                 if response.status_code == 202:
-                    js = parse_json_header(response.headers)
-                    queue_url = js['Location']
+                    queue_url = response.headers['Location']
                     handle_asynchronous(queue_url)
                 collect_error(0, "Success")
 
