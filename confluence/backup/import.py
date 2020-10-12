@@ -12,6 +12,8 @@ import urllib3
 
 urllib3.disable_warnings()
 
+IMPORT_RESOURCE = "rest/confapi/1/backup/import"
+
 authentication_tuple = ("admin", "admin")
 error_collection = []
 terminate_script = [444, 403, 401]
@@ -92,40 +94,44 @@ def ping_server(baseurl, url):
             return print_http_error(resp_put)
 
 
-def main(args):
+def main(argv):
     global authentication_tuple
     global error_collection
     global batch_mode
     error_collection = []
 
     parser = argparse.ArgumentParser(
-        description="sample usage: \n python3 import.py base-url unix-wildcard1 unix-wildcard2 --username my_username "
-                    "--password my_password "
-                    "\n python3 import.py http://localhost:1990/confluence Confluence.zip *.zip --username admin "
-                    "--password admin\n or just: \n ./import.py http://localhost:1990/confluence Confluence.zip "
-                    "*.xml.zip --username admin --password admin",
+        description="sample usage: \n"
+                    "python3 import.py base-url unix-wildcard1 unix-wildcard2 --username user --password pass\n"
+                    "python3 import.py http://localhost:1990/confluence export.zip --username admin --password admin\n"
+                    "or just: \n"
+                    "./import http://localhost:1990/confluence *.xml.zip --username admin --password admin",
         formatter_class=argparse.RawTextHelpFormatter)
+
+    # positional arguments
     parser.add_argument("host", help="provide host url e.g. http://localhost:1990/confluence")
     parser.add_argument('vars', nargs='*', help="provide list of unix wildcards e.g. *.zip *.xml")
+
+    # optional arguments
     parser.add_argument("--username", "-U",
-                        help="provide username e.g. admin; \nif not provided the user will be prompted to introduce "
-                             "username and password.",
-                        required=False)
+                        help="provide username e.g. admin;\n"
+                             "if not provided the user will be prompted to enter a username and a password.")
     parser.add_argument("--password", "-P",
-                        help="provide password e.g. admin; \nif not provided the user will be prompted to introduce "
-                             "username and password.",
-                        required=False)
-    parser.add_argument("--batch", "-b",
-                        action="store_true",
-                        help="Enter batch mode.",
-                        required=False)
-    args = parser.parse_args(args[1:])
+                        help="provide password e.g. admin;\n"
+                             "if not provided the user will be prompted to enter a password.")
+    parser.add_argument("--batch", "-b", action="store_true",
+                        help="run in batch mode.")
+
+    args = parser.parse_args(argv[1:])
 
     username = args.username
     password = args.password
-    if username is None or password is None:
+
+    if username is None:
         username = input("Username: ")
+    if username is None or password is None:
         password = getpass.getpass(prompt='Password: ', stream=None)
+
     authentication_tuple = (username, password)
 
     file_wildcards = args.vars
@@ -141,17 +147,17 @@ def main(args):
                 file_names.append(file)
     print(file_names)
 
-    # Create import url
-    suffix = "/" if args.host[-1] != "/" else ""
-    url = args.host + suffix + "rest/confapi/1/backup/import"
-    batch_mode = False
-    if args.batch:
-        batch_mode = True
+    url_infix = "/" if args.host[-1] != "/" else ""
+    url = "{}{}{}".format(args.host, url_infix, IMPORT_RESOURCE)
 
     # Ping server to verify credentials and permissions
     exit_response = ping_server(args.host, url)
     if exit_response:
         return error_collection
+
+    batch_mode = False
+    if args.batch:
+        batch_mode = True
 
     for file in file_names:
         print("\nUploading " + file)
@@ -188,4 +194,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main(args=sys.argv)
+    main(argv=sys.argv)

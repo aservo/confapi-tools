@@ -11,13 +11,14 @@ import urllib3
 
 urllib3.disable_warnings()
 
-export_resource = "rest/confapi/1/backup/export/"
+EXPORT_RESOURCE = "rest/confapi/1/backup/export"
 
 authentication_tuple = ("admin", "admin")
 
 error_collection = []
 terminate_script = [444, 403, 401]
 batch_mode = False
+
 
 def collect_error(error_code, value):
     global error_collection
@@ -30,6 +31,7 @@ def collect_error(error_code, value):
         print(error_collection)
         return 1
     return 0
+
 
 def print_url_unreachable(error):
     print("\nURL can't be reached.\n")
@@ -96,64 +98,64 @@ def export_queue(key, queue_url):
         js = parse_json_body(response_get_queue.content)
         print(js["errorMessages"])
         return collect_error(
-            str(response_get_queue.status_code) + ": " + requests.status_codes._codes[response_get_queue.status_code][
-                0])
+            str(response_get_queue.status_code) + ": " + requests.status_codes._codes[response_get_queue.status_code][0])
 
 
-def main(args):
+def main(argv):
     global authentication_tuple
-    global export_resource
     global error_collection
     global batch_mode
     error_collection = []
     exit_response = 0
 
     parser = argparse.ArgumentParser(
-        description="sample usage: \n python3 export.py base-url key1,key2 --username my_username --password "
-                    "my_password "
-                    "\n python3 export.py http://localhost:1990/confluence KEY,ds --username admin --password admin "
-                    "\n or just: \n ./export.py http://localhost:1990/confluence KEY,ds --username admin --password "
-                    "admin\n ",
+        description="sample usage: \n"
+                    "python3 export.py base-url key1,key2 --username  my_username --password my_password\n"
+                    "python3 export.py http://localhost:1990/confluence KEY,ds --username admin --password admin\n"
+                    "or just:\n"
+                    "./export http://localhost:1990/confluence KEY,ds --username admin --password  admin\n",
         formatter_class=argparse.RawTextHelpFormatter)
+
+    # positional arguments
     parser.add_argument("host", help="provide host url e.g. http://localhost:1990/confluence")
     parser.add_argument("key", help="provide key e.g. KEY")
+
+    # optional arguments
     parser.add_argument("--username", "-U",
-                        help="provide username e.g. admin; \nif not provided the user will be prompted to introduce "
-                             "username and password.",
-                        required=False)
+                        help="provide username e.g. admin;\n"
+                             "if not provided the user will be prompted to enter a username and a password.")
     parser.add_argument("--password", "-P",
-                        help="provide password e.g. admin; \nif not provided the user will be prompted to introduce "
-                             "username and password.",
-                        required=False)
-    parser.add_argument("--batch", "-b",
-                        action="store_true",
-                        help="Enter batch mode.",
-                        required=False)
-    args = parser.parse_args(args[1:])
+                        help="provide password e.g. admin; \n"
+                             "if not provided the user will be prompted to enter a password.")
+    parser.add_argument("--batch", "-b", action="store_true",
+                        help="run in batch mode.")
+
+    args = parser.parse_args(argv[1:])
+
     username = args.username
     password = args.password
 
-    if username is None or password is None:
+    if username is None:
         username = input("Username: ")
+    if username is None or password is None:
         password = getpass.getpass(prompt='Password: ', stream=None)
+
     authentication_tuple = (username, password)
 
     batch_mode = False
     if args.batch:
         batch_mode = True
-    base_url = args.host
+
     key_list = args.key.split(',')
 
     for key in key_list:
         print("\nDownloading space " + key)
 
-        # Build url
-        suffix = "/" if base_url[-1] != "/" else ""
-        request_page_url = base_url + suffix + export_resource + key
+        url_infix = "/" if args.host[-1] != "/" else ""
+        url = "{}{}{}/{}".format(args.host, url_infix, EXPORT_RESOURCE, key)
 
         try:
-            # Try to connect
-            response_request_page = requests.get(request_page_url, auth=authentication_tuple, verify=False)
+            response_request_page = requests.get(url, auth=authentication_tuple, verify=False)
 
             if not response_request_page.ok:
                 exit_response = print_http_error(response_request_page)
@@ -164,15 +166,15 @@ def main(args):
 
             else:
                 js = parse_json_header(response_request_page.headers)
-                url = js['Location']
+                location = js['Location']
 
                 if response_request_page.status_code == 201:
                     if not batch_mode:
                         print("100%")
-                    export_download(key, url)
+                    export_download(key, location)
 
                 if response_request_page.status_code == 202:
-                    exit_response = export_queue(key, url)
+                    exit_response = export_queue(key, location)
         except requests.exceptions.ConnectionError as e:
             exit_response = print_url_unreachable(e)
 
@@ -185,4 +187,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main(args=sys.argv)
+    main(argv=sys.argv)
