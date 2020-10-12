@@ -4,6 +4,7 @@ import argparse
 import fnmatch
 import getpass
 import json
+import logging
 import os
 import requests
 import sys
@@ -47,14 +48,16 @@ def parse_args(args):
     parser.add_argument('vars', nargs='*', help="provide list of unix wildcards e.g. *.zip *.xml")
 
     # optional arguments
-    parser.add_argument("--username", "-U",
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="increase output verbosity.")
+    parser.add_argument("-b", "--batch", action="store_true",
+                        help="run in batch mode.")
+    parser.add_argument("-U", "--username",
                         help="provide username e.g. admin;\n"
                              "if not provided the user will be prompted to enter a username and a password.")
-    parser.add_argument("--password", "-P",
+    parser.add_argument("-P", "--password",
                         help="provide password e.g. admin;\n"
                              "if not provided the user will be prompted to enter a password.")
-    parser.add_argument("--batch", "-b", action="store_true",
-                        help="run in batch mode.")
 
     return parser.parse_args(args[1:])
 
@@ -154,6 +157,9 @@ def main(argv):
     error_collection = []
 
     args = parse_args(argv)
+
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
 
     username = args.username
     password = args.password
