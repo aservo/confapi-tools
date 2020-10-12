@@ -74,11 +74,11 @@ def print_http_error(http_response):
     return collect_error(http_response.status_code, requests.status_codes._codes[http_response.status_code][0])
 
 
-def parse_json_body(body):
+def parse_json(content):
     try:
-        body = body.decode("utf-8")
-        result = json.loads(body)
-    except Exception as e:
+        content = content.decode("utf-8")
+        result = json.loads(content)
+    except:
         result = {}
     return result
 
@@ -95,19 +95,19 @@ def import_start(host, file):
 
     try:
         # Try to connect
-        response = requests.put(url, files={'file': open(file, 'rb')}, auth=authentication_tuple, verify=False)
+        import_response = requests.put(url, files={'file': open(file, 'rb')}, auth=authentication_tuple, verify=False)
 
         # Handle connection responses
-        if not response.ok:
-            js = parse_json_body(response.content)
-            if "errorMessages" in js:
-                print(js["errorMessages"])
-            exit_response = print_http_error(response)
+        if not import_response.ok:
+            content = parse_json(import_response.content)
+            if "errorMessages" in content:
+                print(content["errorMessages"])
+            exit_response = print_http_error(import_response)
         else:
-            if response.status_code == 201:
+            if import_response.status_code == 201:
                 print("100%")
-            if response.status_code == 202:
-                queue_url = response.headers['Location']
+            if import_response.status_code == 202:
+                queue_url = import_response.headers['Location']
                 import_queue(queue_url)
             collect_error(0, "Success")
 
@@ -118,12 +118,12 @@ def import_start(host, file):
 
 
 def import_queue(queue_url):
-    response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
+    queue_response = requests.get(queue_url, auth=authentication_tuple, verify=False)
 
-    while response_get_queue.status_code == 200:
-        js = parse_json_body(response_get_queue.content)
-        percentage = js["percentageComplete"]
-        response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
+    while queue_response.status_code == 200:
+        content = parse_json(queue_response.content)
+        percentage = content["percentageComplete"]
+        queue_response = requests.get(queue_url, auth=authentication_tuple, verify=False)
         time.sleep(1)
         if not batch_mode:
             sys.stdout.write("\r%d%%" % percentage)
@@ -135,7 +135,6 @@ def import_queue(queue_url):
 
 
 def ping_server(baseurl, url):
-    # PING server
     try:
         resp_get = requests.get(baseurl, auth=authentication_tuple, verify=False)
         resp_put = requests.put(url, auth=authentication_tuple, verify=False)

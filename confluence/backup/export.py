@@ -12,13 +12,14 @@ import urllib3
 
 urllib3.disable_warnings()
 
+# constant variables
 EXPORT_RESOURCE = "rest/confapi/1/backup/export"
+terminate_script = [401, 403, 444]
 
+# global variables
 authentication_tuple = ("admin", "admin")
-
-error_collection = []
-terminate_script = [444, 403, 401]
 batch_mode = False
+error_collection = []
 
 
 def collect_error(error_code, value):
@@ -74,11 +75,11 @@ def print_http_error(http_response):
     return collect_error(http_response.status_code, requests.status_codes._codes[http_response.status_code][0])
 
 
-def parse_json_body(body):
+def parse_json(content):
     try:
-        body = body.decode("utf-8")
-        result = json.loads(body)
-    except Exception as e:
+        content = content.decode("utf-8")
+        result = json.loads(content)
+    except:
         result = {}
     return result
 
@@ -91,75 +92,75 @@ def export_start(host, key):
     url = "{}{}{}/{}".format(host, url_infix, EXPORT_RESOURCE, key)
 
     try:
-        response_request_page = requests.get(url, auth=authentication_tuple, verify=False)
+        export_response = requests.get(url, auth=authentication_tuple, verify=False)
 
-        if not response_request_page.ok:
-            exit_response = print_http_error(response_request_page)
+        if not export_response.ok:
+            exit_response = print_http_error(export_response)
 
-            js = parse_json_body(response_request_page.content)
-            if "errorMessages" in js:
-                print(js["errorMessages"])
+            content = parse_json(export_response.content)
+            if "errorMessages" in content:
+                print(content["errorMessages"])
 
         else:
-            location = response_request_page.headers['Location']
+            location = export_response.headers['Location']
 
-            if response_request_page.status_code == 201:
+            if export_response.status_code == 201:
                 if not batch_mode:
                     print("100%")
-                export_download(key, location)
+                export_download(location, key)
 
-            if response_request_page.status_code == 202:
-                exit_response = export_queue(key, location)
+            if export_response.status_code == 202:
+                exit_response = export_queue(location, key)
+
     except requests.exceptions.ConnectionError as e:
         exit_response = print_url_unreachable(e)
 
     return exit_response
 
 
-def export_queue(key, queue_url):
-    response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
-    global batch_mode
+def export_queue(queue_url, key):
+    queue_response = requests.get(queue_url, auth=authentication_tuple, verify=False)
 
-    if response_get_queue.ok:
+    if queue_response.ok:
         # decorate
-        while response_get_queue.status_code == 200:
-            js = parse_json_body(response_get_queue.content)
-            percentage = js["percentageComplete"]
-            response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
+        while queue_response.status_code == 200:
+            content = parse_json(queue_response.content)
+            percentage = content["percentageComplete"]
+            queue_response = requests.get(queue_url, auth=authentication_tuple, verify=False)
             time.sleep(1)
             if not batch_mode:
                 sys.stdout.write("\r%d%%" % percentage)
                 sys.stdout.flush()
-        if response_get_queue.status_code == 201:
+        if queue_response.status_code == 201:
             if not batch_mode:
                 sys.stdout.write("\r%d%%" % 100)
                 sys.stdout.flush()
                 print()
-            response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
-            zip_url = response_get_queue.headers['Location']
-            return export_download(key, zip_url)
+            queue_response = requests.get(queue_url, auth=authentication_tuple, verify=False)
+            zip_url = queue_response.headers['Location']
+            return export_download(zip_url, key)
         return 1
 
     else:
-        js = parse_json_body(response_get_queue.content)
-        print(js["errorMessages"])
+        content = parse_json(queue_response.content)
+        print(content["errorMessages"])
         return collect_error(
-            str(response_get_queue.status_code) + ": " + requests.status_codes._codes[response_get_queue.status_code][0])
+            str(queue_response.status_code) + ": " + requests.status_codes._codes[queue_response.status_code][0])
 
 
-def export_download(key, url, chunk_size=128):
-    save_file_path = os.getcwd() + "/Confluence-space-export-" + key + ".xml.zip"
-    r = requests.get(url, stream=True, auth=authentication_tuple, verify=False)
-    with open(save_file_path, 'wb') as fd:
-        for chunk in r.iter_content(chunk_size=chunk_size):
+def export_download(download_url, key):
+    download_file_path = os.getcwd() + "/Confluence-space-export-" + key + ".xml.zip"
+    download_response = requests.get(download_url, stream=True, auth=authentication_tuple, verify=False)
+    with open(download_file_path, 'wb') as fd:
+        for chunk in download_response.iter_content(chunk_size=128):
             fd.write(chunk)
     return collect_error(0, "Success")
 
 
 def main(argv):
     global authentication_tuple
-    global error_collection
     global batch_mode
+    global error_collection
     error_collection = []
 
     args = parse_args(argv)
