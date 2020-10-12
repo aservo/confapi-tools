@@ -54,13 +54,37 @@ def parse_json_body(body):
     return result
 
 
-def export_download(key, url, chunk_size=128):
-    save_file_path = os.getcwd() + "/Confluence-space-export-" + key + ".xml.zip"
-    r = requests.get(url, stream=True, auth=authentication_tuple, verify=False)
-    with open(save_file_path, 'wb') as fd:
-        for chunk in r.iter_content(chunk_size=chunk_size):
-            fd.write(chunk)
-    return collect_error(0, "Success")
+def export_start(host, key):
+    exit_response = 0
+    print("\nStart exporting space " + key)
+
+    url_infix = "/" if host[-1] != "/" else ""
+    url = "{}{}{}/{}".format(host, url_infix, EXPORT_RESOURCE, key)
+
+    try:
+        response_request_page = requests.get(url, auth=authentication_tuple, verify=False)
+
+        if not response_request_page.ok:
+            exit_response = print_http_error(response_request_page)
+
+            js = parse_json_body(response_request_page.content)
+            if "errorMessages" in js:
+                print(js["errorMessages"])
+
+        else:
+            location = response_request_page.headers['Location']
+
+            if response_request_page.status_code == 201:
+                if not batch_mode:
+                    print("100%")
+                export_download(key, location)
+
+            if response_request_page.status_code == 202:
+                exit_response = export_queue(key, location)
+    except requests.exceptions.ConnectionError as e:
+        exit_response = print_url_unreachable(e)
+
+    return exit_response
 
 
 def export_queue(key, queue_url):
@@ -94,12 +118,20 @@ def export_queue(key, queue_url):
             str(response_get_queue.status_code) + ": " + requests.status_codes._codes[response_get_queue.status_code][0])
 
 
+def export_download(key, url, chunk_size=128):
+    save_file_path = os.getcwd() + "/Confluence-space-export-" + key + ".xml.zip"
+    r = requests.get(url, stream=True, auth=authentication_tuple, verify=False)
+    with open(save_file_path, 'wb') as fd:
+        for chunk in r.iter_content(chunk_size=chunk_size):
+            fd.write(chunk)
+    return collect_error(0, "Success")
+
+
 def main(argv):
     global authentication_tuple
     global error_collection
     global batch_mode
     error_collection = []
-    exit_response = 0
 
     parser = argparse.ArgumentParser(
         description="sample usage: \n"
@@ -139,36 +171,8 @@ def main(argv):
     if args.batch:
         batch_mode = True
 
-    key_list = args.key.split(',')
-
-    for key in key_list:
-        print("\nDownloading space " + key)
-
-        url_infix = "/" if args.host[-1] != "/" else ""
-        url = "{}{}{}/{}".format(args.host, url_infix, EXPORT_RESOURCE, key)
-
-        try:
-            response_request_page = requests.get(url, auth=authentication_tuple, verify=False)
-
-            if not response_request_page.ok:
-                exit_response = print_http_error(response_request_page)
-
-                js = parse_json_body(response_request_page.content)
-                if "errorMessages" in js:
-                    print(js["errorMessages"])
-
-            else:
-                location = response_request_page.headers['Location']
-
-                if response_request_page.status_code == 201:
-                    if not batch_mode:
-                        print("100%")
-                    export_download(key, location)
-
-                if response_request_page.status_code == 202:
-                    exit_response = export_queue(key, location)
-        except requests.exceptions.ConnectionError as e:
-            exit_response = print_url_unreachable(e)
+    for key in args.key.split(','):
+        exit_response = export_start(args.host, key)
 
         if exit_response:
             return error_collection
