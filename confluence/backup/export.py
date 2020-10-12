@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-from typing import Tuple
 
-import requests
-import time
-import sys
-import json
-import os
 import argparse
 import getpass
+import json
+import os
+import requests
+import sys
+import time
+import urllib3
+
+urllib3.disable_warnings()
 
 export_resource = "rest/confapi/1/backup/export/"
-authentication_tuple: Tuple[str, str] = ("admin", "admin")
+
+authentication_tuple = ("admin", "admin")
 
 
 def print_url_unreachable(error):
@@ -42,20 +45,20 @@ def parse_json_body(body):
 
 def export_download(key, url, chunk_size=128):
     save_file_path = os.getcwd() + "/Confluence-space-export-" + key + ".xml.zip"
-    r = requests.get(url, stream=True, auth=authentication_tuple)
+    r = requests.get(url, stream=True, auth=authentication_tuple, verify=False)
     with open(save_file_path, 'wb') as fd:
         for chunk in r.iter_content(chunk_size=chunk_size):
             fd.write(chunk)
 
 
 def export_queue(key, queue_url):
-    response_get_queue = requests.get(queue_url, auth=authentication_tuple)
+    response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
 
     if response_get_queue.ok:
         while response_get_queue.status_code == 200:
             js = parse_json_body(response_get_queue.content)
             percentage = js["percentageComplete"]
-            response_get_queue = requests.get(queue_url, auth=authentication_tuple)
+            response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
             time.sleep(1)
             sys.stdout.write("\r%d%%" % percentage)
             sys.stdout.flush()
@@ -65,7 +68,7 @@ def export_queue(key, queue_url):
             sys.stdout.flush()
             print()
 
-            response_get_queue = requests.get(queue_url, auth=authentication_tuple)
+            response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
             js = parse_json_header(response_get_queue.headers)
             zip_url = js['Location']
             export_download(key, zip_url)
@@ -108,7 +111,7 @@ def main():
         # Try to connect
         response_request_page = requests.Response()
         try:
-            response_request_page = requests.get(request_page_url, auth=authentication_tuple)
+            response_request_page = requests.get(request_page_url, auth=authentication_tuple, verify=False)
         except requests.exceptions.ConnectionError as e:
             print_url_unreachable(e)
 

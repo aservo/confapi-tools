@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 
-import requests
-import time
-import sys
+import argparse
+import fnmatch
+import getpass
 import json
 import os
-import fnmatch
-import argparse
-import getpass
+import requests
+import sys
+import time
+import urllib3
+
+urllib3.disable_warnings()
 
 authentication_tuple = ("admin", "admin")
 
@@ -41,11 +44,11 @@ def parse_json_body(body):
 
 
 def handle_asynchronous(queue_url):
-    response_get_queue = requests.get(queue_url, auth=authentication_tuple)
+    response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
     while response_get_queue.status_code == 200:
         js = parse_json_body(response_get_queue.content)
         percentage = js["percentageComplete"]
-        response_get_queue = requests.get(queue_url, auth=authentication_tuple)
+        response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
         time.sleep(1)
         sys.stdout.write("\r%d%%" % percentage)
         sys.stdout.flush()
@@ -57,8 +60,8 @@ def handle_asynchronous(queue_url):
 def ping_server(baseurl, url):
     # PING server
     try:
-        resp_get = requests.get(baseurl, auth=authentication_tuple)
-        resp_put = requests.put(url, auth=authentication_tuple)
+        resp_get = requests.get(baseurl, auth=authentication_tuple, verify=False)
+        resp_put = requests.put(url, auth=authentication_tuple, verify=False)
     except requests.exceptions.ConnectionError as e:
         print_url_unreachable(e)
 
@@ -117,7 +120,7 @@ def main():
         # Try to connect
         response = requests.Response()
         try:
-            response = requests.put(url, files=multipart_form_dict, auth=authentication_tuple)
+            response = requests.put(url, files=multipart_form_dict, auth=authentication_tuple, verify=False)
         except requests.exceptions.ConnectionError as e:
             print_url_unreachable(e)
 
