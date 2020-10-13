@@ -4,6 +4,7 @@ import argparse
 import fnmatch
 import getpass
 import json
+import logging
 import os
 import requests
 import sys
@@ -12,10 +13,14 @@ import urllib3
 
 urllib3.disable_warnings()
 
-authentication_tuple = ("admin", "admin")
-error_collection = []
+# constant variables
+IMPORT_RESOURCE = "rest/confapi/1/backup/import"
 terminate_script = [444, 403, 401]
+
+# global variables
 batch_mode = False
+authentication_tuple = ()
+error_collection = []
 
 
 def collect_error(error_code, value):
@@ -31,6 +36,34 @@ def collect_error(error_code, value):
     return 0
 
 
+def parse_args(args):
+    parser = argparse.ArgumentParser(
+        description="sample usage: \n"
+                    "python3 import.py base-url unix-wildcard1 unix-wildcard2 --username user --password pass\n"
+                    "python3 import.py http://localhost:1990/confluence export.zip --username admin --password admin\n"
+                    "or just: \n"
+                    "./import.py http://localhost:1990/confluence *.xml.zip --username admin --password admin",
+        formatter_class=argparse.RawTextHelpFormatter)
+
+    # positional arguments
+    parser.add_argument("host", help="provide host url e.g. http://localhost:1990/confluence")
+    parser.add_argument('vars', nargs='*', help="provide list of unix wildcards e.g. *.zip *.xml")
+
+    # optional arguments
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="increase output verbosity.")
+    parser.add_argument("-b", "--batch", action="store_true",
+                        help="run in batch mode.")
+    parser.add_argument("-U", "--username",
+                        help="provide username e.g. admin;\n"
+                             "if not provided the user will be prompted to enter a username and a password.")
+    parser.add_argument("-P", "--password",
+                        help="provide password e.g. admin;\n"
+                             "if not provided the user will be prompted to enter a password.")
+
+    return parser.parse_args(args[1:])
+
+
 def print_url_unreachable(error):
     print("\nURL can't be reached.\n")
     print(error)
@@ -43,29 +76,56 @@ def print_http_error(http_response):
     return collect_error(http_response.status_code, requests.status_codes._codes[http_response.status_code][0])
 
 
-def parse_json_header(headers):
-    res = str(headers).replace('"', '\\"')
-    res = str(res).replace("'", '"')
-    return json.loads(res)
-
-
-def parse_json_body(body):
+def parse_json(content):
     try:
-        body = body.decode("utf-8")
-        result = json.loads(body)
-    except Exception as e:
+        content = content.decode("utf-8")
+        result = json.loads(content)
+    except:
         result = {}
     return result
 
 
-def handle_asynchronous(queue_url):
-    global batch_mode
-    response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
+def import_start(host, file):
+    exit_response = 0
+    print("\nStart importing space from " + file)
 
-    while response_get_queue.status_code == 200:
-        js = parse_json_body(response_get_queue.content)
-        percentage = js["percentageComplete"]
-        response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
+    url_infix = "/" if host[-1] != "/" else ""
+    url = "{}{}{}".format(host, url_infix, IMPORT_RESOURCE)
+
+    # Ping server to verify credentials and permissions
+    ping_server(host, url)
+
+    try:
+        # Try to connect
+        import_response = requests.put(url, files={'file': open(file, 'rb')}, auth=authentication_tuple, verify=False)
+
+        # Handle connection responses
+        if not import_response.ok:
+            content = parse_json(import_response.content)
+            if "errorMessages" in content:
+                print(content["errorMessages"])
+            exit_response = print_http_error(import_response)
+        else:
+            if import_response.status_code == 201:
+                print("100%")
+            if import_response.status_code == 202:
+                queue_url = import_response.headers['Location']
+                import_queue(queue_url)
+            collect_error(0, "Success")
+
+    except requests.exceptions.ConnectionError as e:
+        exit_response = print_url_unreachable(e)
+
+    return exit_response
+
+
+def import_queue(queue_url):
+    queue_response = requests.get(queue_url, auth=authentication_tuple, verify=False)
+
+    while queue_response.status_code == 200:
+        content = parse_json(queue_response.content)
+        percentage = content["percentageComplete"]
+        queue_response = requests.get(queue_url, auth=authentication_tuple, verify=False)
         time.sleep(1)
         if not batch_mode:
             sys.stdout.write("\r%d%%" % percentage)
@@ -77,7 +137,6 @@ def handle_asynchronous(queue_url):
 
 
 def ping_server(baseurl, url):
-    # PING server
     try:
         resp_get = requests.get(baseurl, auth=authentication_tuple, verify=False)
         resp_put = requests.put(url, auth=authentication_tuple, verify=False)
@@ -92,41 +151,39 @@ def ping_server(baseurl, url):
             return print_http_error(resp_put)
 
 
-def main(args):
-    global authentication_tuple
-    global error_collection
-    global batch_mode
-    error_collection = []
+def init_logging_mode(args):
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
 
-    parser = argparse.ArgumentParser(
-        description="sample usage: \n python3 import.py base-url unix-wildcard1 unix-wildcard2 --username my_username "
-                    "--password my_password "
-                    "\n python3 import.py http://localhost:1990/confluence Confluence.zip *.zip --username admin "
-                    "--password admin\n or just: \n ./import.py http://localhost:1990/confluence Confluence.zip "
-                    "*.xml.zip --username admin --password admin",
-        formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("host", help="provide host url e.g. http://localhost:1990/confluence")
-    parser.add_argument('vars', nargs='*', help="provide list of unix wildcards e.g. *.zip *.xml")
-    parser.add_argument("--username", "-U",
-                        help="provide username e.g. admin; \nif not provided the user will be prompted to introduce "
-                             "username and password.",
-                        required=False)
-    parser.add_argument("--password", "-P",
-                        help="provide password e.g. admin; \nif not provided the user will be prompted to introduce "
-                             "username and password.",
-                        required=False)
-    parser.add_argument("--batch", "-b",
-                        action="store_true",
-                        help="Enter batch mode.",
-                        required=False)
-    args = parser.parse_args(args[1:])
+
+def init_batch_mode(args):
+    global batch_mode
+    batch_mode = args.batch
+
+
+def init_authentication_tuple(args):
+    global authentication_tuple
 
     username = args.username
     password = args.password
-    if username is None or password is None:
+
+    if username is None:
         username = input("Username: ")
+    if args.username is None or password is None:
         password = getpass.getpass(prompt='Password: ', stream=None)
+
     authentication_tuple = (username, password)
+
+
+def main(argv):
+    global error_collection
+    error_collection = []
+
+    args = parse_args(argv)
+
+    init_logging_mode(args)
+    init_batch_mode(args)
+    init_authentication_tuple(args)
 
     file_wildcards = args.vars
     file_names = []
@@ -138,15 +195,11 @@ def main(args):
             wildcard = wildcard[pos + 1:]
         for file in os.listdir(directory):
             if fnmatch.fnmatch(file, wildcard):
-                file_names.append(file)
+                file_names.append(directory + "/" + file)
     print(file_names)
 
-    # Create import url
-    suffix = "/" if args.host[-1] != "/" else ""
-    url = args.host + suffix + "rest/confapi/1/backup/import"
-    batch_mode = False
-    if args.batch:
-        batch_mode = True
+    url_infix = "/" if args.host[-1] != "/" else ""
+    url = "{}{}{}".format(args.host, url_infix, IMPORT_RESOURCE)
 
     # Ping server to verify credentials and permissions
     exit_response = ping_server(args.host, url)
@@ -154,30 +207,7 @@ def main(args):
         return error_collection
 
     for file in file_names:
-        print("\nUploading " + file)
-        multipart_form_dict = {'file': open(file, 'rb')}
-
-        try:
-            # Try to connect
-            response = requests.put(url, files=multipart_form_dict, auth=authentication_tuple, verify=False)
-
-            # Handle connection responses
-            if not response.ok:
-                js = parse_json_body(response.content)
-                if "errorMessages" in js:
-                    print(js["errorMessages"])
-                exit_response = print_http_error(response)
-            else:
-                if response.status_code == 201:
-                    print("100%")
-                if response.status_code == 202:
-                    js = parse_json_header(response.headers)
-                    queue_url = js['Location']
-                    handle_asynchronous(queue_url)
-                collect_error(0, "Success")
-
-        except requests.exceptions.ConnectionError as e:
-            exit_response = print_url_unreachable(e)
+        import_start(args.host, file)
 
         if exit_response:
             return error_collection
@@ -188,4 +218,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main(args=sys.argv)
+    main(argv=sys.argv)

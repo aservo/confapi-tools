@@ -6,6 +6,7 @@ import time
 from zipfile import ZipFile
 import os
 import shutil
+import json
 
 CONFLUENCE_BASEURL = "http://localhost:1990/confluence"
 CONFLUENCE_INVALID_BASEURL = "http://localhost:1991/confluence"
@@ -33,6 +34,15 @@ CONFLUENCE_FILES = {
     "ds": "Confluence-space-export-ds.xml.zip",
     "large": "Confluence-space-export-ds-large.xml.zip"
 }
+
+
+def parse_json(body):
+    try:
+        body = body.decode("utf-8")
+        result = json.loads(body)
+    except Exception as e:
+        result = {}
+    return result
 
 
 class ConfluenceTestImport(unittest.TestCase):
@@ -76,7 +86,7 @@ class ConfluenceTestImport(unittest.TestCase):
             response_delete = requests.delete(url, auth=(
             CONFLUENCE_USERS["admin_user"]["username"], CONFLUENCE_USERS["admin_user"]["password"]))
             self.assertEqual(response_delete.status_code, 202)
-            js = sys.modules["confluence.backup.import"].parse_json_body(response_delete.content)
+            js = parse_json(response_delete.content)
             status_resource = js["links"]["status"]
             url_status = CONFLUENCE_BASEURL + status_resource
             response_status = requests.get(url_status, auth=(
@@ -85,7 +95,7 @@ class ConfluenceTestImport(unittest.TestCase):
 
             while percentage_complete < 100:
                 time.sleep(1)
-                js = sys.modules["confluence.backup.import"].parse_json_body(response_status.content)
+                js = parse_json(response_status.content)
                 percentage_complete = js["percentageComplete"]
                 response_status = requests.get(url_status, auth=(
                     CONFLUENCE_USERS["admin_user"]["username"], CONFLUENCE_USERS["admin_user"]["password"]))
@@ -95,7 +105,7 @@ class ConfluenceTestImport(unittest.TestCase):
         r = requests.get(url, stream=True,
                          auth=(CONFLUENCE_USERS["admin_user"]["username"], CONFLUENCE_USERS["admin_user"]["password"]))
         self.assertEqual(r.status_code, 200)
-        js = sys.modules["confluence.backup.import"].parse_json_body(r.content)
+        js = parse_json(r.content)
         return [result["key"] for result in js["results"]]
 
     def setUp(self):
