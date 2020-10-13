@@ -13,12 +13,14 @@ import urllib3
 
 urllib3.disable_warnings()
 
+# constant variables
 IMPORT_RESOURCE = "rest/confapi/1/backup/import"
-
-authentication_tuple = ("admin", "admin")
-error_collection = []
 terminate_script = [444, 403, 401]
+
+# global variables
 batch_mode = False
+authentication_tuple = ()
+error_collection = []
 
 
 def collect_error(error_code, value):
@@ -149,26 +151,39 @@ def ping_server(baseurl, url):
             return print_http_error(resp_put)
 
 
-def main(argv):
-    global authentication_tuple
-    global error_collection
-    global batch_mode
-    error_collection = []
-
-    args = parse_args(argv)
-
+def init_logging_mode(args):
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
+
+
+def init_batch_mode(args):
+    global batch_mode
+    batch_mode = args.batch
+
+
+def init_authentication_tuple(args):
+    global authentication_tuple
 
     username = args.username
     password = args.password
 
     if username is None:
         username = input("Username: ")
-    if username is None or password is None:
+    if args.username is None or password is None:
         password = getpass.getpass(prompt='Password: ', stream=None)
 
     authentication_tuple = (username, password)
+
+
+def main(argv):
+    global error_collection
+    error_collection = []
+
+    args = parse_args(argv)
+
+    init_logging_mode(args)
+    init_batch_mode(args)
+    init_authentication_tuple(args)
 
     file_wildcards = args.vars
     file_names = []
@@ -190,10 +205,6 @@ def main(argv):
     exit_response = ping_server(args.host, url)
     if exit_response:
         return error_collection
-
-    batch_mode = False
-    if args.batch:
-        batch_mode = True
 
     for file in file_names:
         import_start(args.host, file)

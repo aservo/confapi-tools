@@ -17,8 +17,8 @@ EXPORT_RESOURCE = "rest/confapi/1/backup/export"
 terminate_script = [401, 403, 444]
 
 # global variables
-authentication_tuple = ("admin", "admin")
 batch_mode = False
+authentication_tuple = ()
 error_collection = []
 
 
@@ -157,30 +157,39 @@ def export_download(download_url, key):
     return collect_error(0, "Success")
 
 
-def main(argv):
-    global authentication_tuple
-    global batch_mode
-    global error_collection
-    error_collection = []
-
-    args = parse_args(argv)
-
+def init_logging_mode(args):
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
+
+
+def init_batch_mode(args):
+    global batch_mode
+    batch_mode = args.batch
+
+
+def init_authentication_tuple(args):
+    global authentication_tuple
 
     username = args.username
     password = args.password
 
     if username is None:
         username = input("Username: ")
-    if username is None or password is None:
+    if args.username is None or password is None:
         password = getpass.getpass(prompt='Password: ', stream=None)
 
     authentication_tuple = (username, password)
 
-    batch_mode = False
-    if args.batch:
-        batch_mode = True
+
+def main(argv):
+    global error_collection
+    error_collection = []
+
+    args = parse_args(argv)
+
+    init_logging_mode(args)
+    init_batch_mode(args)
+    init_authentication_tuple(args)
 
     for key in args.key.split(','):
         exit_response = export_start(args.host, key)
