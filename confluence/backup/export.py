@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
-from typing import Tuple
 
-import requests
-import time
-import sys
-import json
-import os
 import argparse
 import getpass
+import json
+import os
+import requests
+import sys
+import time
+import urllib3
+
+urllib3.disable_warnings()
 
 export_resource = "rest/confapi/1/backup/export/"
-authentication_tuple: Tuple[str, str] = ("admin", "admin")
+
+authentication_tuple = ("admin", "admin")
+
 error_collection = []
 terminate_script = [444, 403, 401]
 batch_mode = False
-
 
 def collect_error(error_code, value):
     global error_collection
@@ -27,7 +30,6 @@ def collect_error(error_code, value):
         print(error_collection)
         return 1
     return 0
-
 
 def print_url_unreachable(error):
     print("\nURL can't be reached.\n")
@@ -57,7 +59,7 @@ def parse_json_body(body):
 
 def export_download(key, url, chunk_size=128):
     save_file_path = os.getcwd() + "/Confluence-space-export-" + key + ".xml.zip"
-    r = requests.get(url, stream=True, auth=authentication_tuple)
+    r = requests.get(url, stream=True, auth=authentication_tuple, verify=False)
     with open(save_file_path, 'wb') as fd:
         for chunk in r.iter_content(chunk_size=chunk_size):
             fd.write(chunk)
@@ -65,7 +67,7 @@ def export_download(key, url, chunk_size=128):
 
 
 def export_queue(key, queue_url):
-    response_get_queue = requests.get(queue_url, auth=authentication_tuple)
+    response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
     global batch_mode
 
     if response_get_queue.ok:
@@ -73,7 +75,7 @@ def export_queue(key, queue_url):
         while response_get_queue.status_code == 200:
             js = parse_json_body(response_get_queue.content)
             percentage = js["percentageComplete"]
-            response_get_queue = requests.get(queue_url, auth=authentication_tuple)
+            response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
             time.sleep(1)
             if not batch_mode:
                 sys.stdout.write("\r%d%%" % percentage)
@@ -83,7 +85,8 @@ def export_queue(key, queue_url):
                 sys.stdout.write("\r%d%%" % 100)
                 sys.stdout.flush()
                 print()
-            response_get_queue = requests.get(queue_url, auth=authentication_tuple)
+            response_get_queue = requests.get(queue_url, auth=authentication_tuple, verify=False)
+
             js = parse_json_header(response_get_queue.headers)
             zip_url = js['Location']
             return export_download(key, zip_url)
@@ -150,7 +153,7 @@ def main(args):
 
         try:
             # Try to connect
-            response_request_page = requests.get(request_page_url, auth=authentication_tuple)
+            response_request_page = requests.get(request_page_url, auth=authentication_tuple, verify=False)
 
             if not response_request_page.ok:
                 exit_response = print_http_error(response_request_page)
