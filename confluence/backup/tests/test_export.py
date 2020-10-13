@@ -3,6 +3,7 @@ import importlib
 import requests
 import sys
 import os
+import json
 
 
 
@@ -29,6 +30,15 @@ CONFLUENCE_USERS = {
 }
 
 
+def parse_json(body):
+    try:
+        body = body.decode("utf-8")
+        result = json.loads(body)
+    except Exception as e:
+        result = {}
+    return result
+
+
 class ConfluenceTestExport(unittest.TestCase):
 
     def setUpClass() -> None:
@@ -46,7 +56,7 @@ class ConfluenceTestExport(unittest.TestCase):
         r = requests.get(url, stream=True,
                          auth=(CONFLUENCE_USERS["admin_user"]["username"], CONFLUENCE_USERS["admin_user"]["password"]))
         self.assertEqual(r.status_code, 200)
-        js = sys.modules["confluence.backup.export"].parse_json_body(r.content)
+        js = parse_json(r.content)
         return [result["key"] for result in js["results"]]
 
     def setUp(self):

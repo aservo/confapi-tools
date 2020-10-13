@@ -195,7 +195,7 @@ def main(argv):
             wildcard = wildcard[pos + 1:]
         for file in os.listdir(directory):
             if fnmatch.fnmatch(file, wildcard):
-                file_names.append(file)
+                file_names.append(directory + "/" + file)
     print(file_names)
 
     url_infix = "/" if args.host[-1] != "/" else ""
