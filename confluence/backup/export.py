@@ -84,6 +84,15 @@ def parse_json(content):
     return result
 
 
+def print_progress(title, percentage):
+    if not batch_mode:
+        sys.stdout.write("\r%s: %d%%" % (title, percentage))
+        sys.stdout.flush()
+
+        if percentage == 100:
+            print()
+
+
 def export_start(host, key):
     exit_response = 0
     print("\nStart exporting space " + key)
@@ -105,8 +114,6 @@ def export_start(host, key):
             location = export_response.headers['Location']
 
             if export_response.status_code == 201:
-                if not batch_mode:
-                    print("100%")
                 export_download(location, key)
 
             if export_response.status_code == 202:
@@ -119,41 +126,43 @@ def export_start(host, key):
 
 
 def export_queue(queue_url, key):
-    queue_response = requests.get(queue_url, auth=authentication_tuple, verify=False)
+    while True:
+        queue_response = requests.get(queue_url, auth=authentication_tuple, verify=False)
 
-    if queue_response.ok:
-        # decorate
-        while queue_response.status_code == 200:
-            content = parse_json(queue_response.content)
-            percentage = content["percentageComplete"]
-            queue_response = requests.get(queue_url, auth=authentication_tuple, verify=False)
-            time.sleep(1)
-            if not batch_mode:
-                sys.stdout.write("\r%d%%" % percentage)
-                sys.stdout.flush()
-        if queue_response.status_code == 201:
-            if not batch_mode:
-                sys.stdout.write("\r%d%%" % 100)
-                sys.stdout.flush()
-                print()
-            queue_response = requests.get(queue_url, auth=authentication_tuple, verify=False)
-            zip_url = queue_response.headers['Location']
-            return export_download(zip_url, key)
-        return 1
+        if queue_response.status_code != 200:
+            if queue_response.status_code == 201:
+                location = queue_response.headers['Location']
+                return export_download(location, key)
+            elif not queue_response.ok:
+                content = parse_json(queue_response.content)
+                print(content["errorMessages"])
+                return collect_error(str(queue_response.status_code) + ": "
+                                     + requests.status_codes._codes[queue_response.status_code][0])
+            break
 
-    else:
         content = parse_json(queue_response.content)
-        print(content["errorMessages"])
-        return collect_error(
-            str(queue_response.status_code) + ": " + requests.status_codes._codes[queue_response.status_code][0])
+        percentage = content["percentageComplete"]
+        print_progress("Export", percentage)
+        time.sleep(1)
+    return 1
 
 
 def export_download(download_url, key):
-    download_file_path = os.getcwd() + "/Confluence-space-export-" + key + ".xml.zip"
-    download_response = requests.get(download_url, stream=True, auth=authentication_tuple, verify=False)
-    with open(download_file_path, 'wb') as fd:
-        for chunk in download_response.iter_content(chunk_size=128):
+    print_progress("Export", 100)
+
+    download_file = os.getcwd() + "/Confluence-space-export-" + key + ".xml.zip"
+    with open(download_file, 'wb') as fd:
+        download_response = requests.get(download_url, stream=True, auth=authentication_tuple, verify=False)
+        download_size = download_response.headers['Content-Length']
+        download_progress = 0.0
+
+        for chunk in download_response.iter_content(chunk_size=4096):
             fd.write(chunk)
+
+            if download_size is not None:
+                download_progress += len(chunk)
+                print_progress("Download", int(100 * download_progress / int(download_size)))
+
     return collect_error(0, "Success")
 
 
