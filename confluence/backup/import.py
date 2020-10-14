@@ -85,9 +85,18 @@ def parse_json(content):
     return result
 
 
+def print_progress(title, percentage):
+    if not batch_mode:
+        sys.stdout.write("\r%s: %d%%" % (title, percentage))
+        sys.stdout.flush()
+
+        if percentage == 100:
+            print()
+
+
 def import_start(host, file):
     exit_response = 0
-    print("\nStart importing space from " + file)
+    print("\nStart importing space using file " + file)
 
     url_infix = "/" if host[-1] != "/" else ""
     url = "{}{}{}".format(host, url_infix, IMPORT_RESOURCE)
@@ -96,10 +105,9 @@ def import_start(host, file):
     ping_server(host, url)
 
     try:
-        # Try to connect
+        print("Upload: No progress info available (yet)")
         import_response = requests.post(url, files={'file': open(file, 'rb')}, auth=authentication_tuple, verify=False)
 
-        # Handle connection responses
         if not import_response.ok:
             content = parse_json(import_response.content)
             if "errorMessages" in content:
@@ -107,7 +115,7 @@ def import_start(host, file):
             exit_response = print_http_error(import_response)
         else:
             if import_response.status_code == 201:
-                print("100%")
+                print_progress("Import", 100)
             if import_response.status_code == 202:
                 queue_url = import_response.headers['Location']
                 import_queue(queue_url)
@@ -120,20 +128,18 @@ def import_start(host, file):
 
 
 def import_queue(queue_url):
-    queue_response = requests.get(queue_url, auth=authentication_tuple, verify=False)
-
-    while queue_response.status_code == 200:
-        content = parse_json(queue_response.content)
-        percentage = content["percentageComplete"]
+    while True:
         queue_response = requests.get(queue_url, auth=authentication_tuple, verify=False)
+
+        if queue_response.ok:
+            content = parse_json(queue_response.content)
+            percentage = content["percentageComplete"]
+            print_progress("Import", percentage)
+
+        if queue_response.status_code != 200:
+            break
+
         time.sleep(1)
-        if not batch_mode:
-            sys.stdout.write("\r%d%%" % percentage)
-            sys.stdout.flush()
-    if not batch_mode:
-        sys.stdout.write("\r%d%%" % 100)
-        sys.stdout.flush()
-        print()
 
 
 def ping_server(baseurl, url):
@@ -196,7 +202,6 @@ def main(argv):
         for file in os.listdir(directory):
             if fnmatch.fnmatch(file, wildcard):
                 file_names.append(directory + "/" + file)
-    print(file_names)
 
     url_infix = "/" if args.host[-1] != "/" else ""
     url = "{}{}{}".format(args.host, url_infix, IMPORT_RESOURCE)
@@ -205,6 +210,10 @@ def main(argv):
     exit_response = ping_server(args.host, url)
     if exit_response:
         return error_collection
+
+    print("\nImporting spaces using the following files:")
+    for file in file_names:
+        print("- " + file)
 
     for file in file_names:
         import_start(args.host, file)
