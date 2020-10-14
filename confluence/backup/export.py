@@ -95,7 +95,7 @@ def print_progress(title, percentage):
 
 def export_start(host, key):
     exit_response = 0
-    print("\nStart exporting space " + key)
+    print("\nStart exporting space using key " + key)
 
     url_infix = "/" if host[-1] != "/" else ""
     url = "{}{}{}/{}".format(host, url_infix, EXPORT_RESOURCE, key)
@@ -199,6 +199,10 @@ def main(argv):
     init_logging_mode(args)
     init_batch_mode(args)
     init_authentication_tuple(args)
+
+    print("\nExporting spaces using the following keys:")
+    for key in args.key.split(','):
+        print("- " + key)
 
     for key in args.key.split(','):
         exit_response = export_start(args.host, key)
