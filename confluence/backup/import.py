@@ -97,7 +97,7 @@ def import_start(host, file):
 
     try:
         # Try to connect
-        import_response = requests.put(url, files={'file': open(file, 'rb')}, auth=authentication_tuple, verify=False)
+        import_response = requests.post(url, files={'file': open(file, 'rb')}, auth=authentication_tuple, verify=False)
 
         # Handle connection responses
         if not import_response.ok:
